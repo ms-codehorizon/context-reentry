@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Context Re-Entry - drop back into any project in 90 seconds</title>
+<meta name="description" content="Scan a repo you haven't touched in days; get a re-entry map reconstructed from the evidence - where you were, the open decision, the first action - and it flags where your memory contradicts the repo.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.github.com; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:hsl(226 44% 13%);--card:hsl(226 34% 17.5%);--card2:hsl(226 32% 15%);
+  --ink:hsl(40 32% 92%);--muted:hsl(220 17% 66%);--faint:hsl(222 14% 52%);
+  --accent:hsl(28 100% 60%);--accentink:hsl(32 100% 70%);
+  --peach1:hsl(38 100% 64%);--peach2:hsl(24 100% 57%);--peachsoft:hsl(28 70% 24%);
+  --line:hsl(226 22% 28%);--green:hsl(150 60% 56%);--red:hsl(6 88% 66%);--warn:hsl(40 95% 62%);--blue:hsl(208 85% 68%);
+  --radius:0.75rem;
+  --disp:'Outfit',system-ui,-apple-system,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--disp);color:var(--ink);line-height:1.6;padding-bottom:48px;
+  background-color:var(--bg);
+  background-image:
+    radial-gradient(ellipse at 6% 102%, hsl(30 95% 48% / .30) 0%, transparent 42%),
+    radial-gradient(ellipse at 92% -8%, hsl(226 60% 26% / .7) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% -20%, hsl(220 55% 22% / .6) 0%, transparent 60%);
+  background-repeat:no-repeat;background-attachment:fixed}
+.wrap{max-width:880px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
+.bgart{position:fixed;left:-24px;bottom:-12px;width:min(44vw,540px);color:var(--accent);opacity:.18;z-index:0;pointer-events:none;filter:drop-shadow(0 0 22px hsl(30 100% 55% / .25))}
+.bgart svg{width:100%;height:auto;display:block}
+@media(max-width:760px){.bgart{display:none}}
+.mono{font-family:var(--mono)}
+
+/* nav */
+nav{padding:26px 0 0}
+nav .row{display:flex;align-items:center;gap:14px}
+.logo{display:flex;align-items:center;gap:12px;font-weight:800;font-size:22px;letter-spacing:-.4px}
+.logo .mark{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--peach1),var(--peach2));display:flex;align-items:center;justify-content:center;box-shadow:0 6px 16px hsl(226 70% 4% / .28)}
+.logo .mark svg{width:22px;height:22px}
+.spacer{flex:1}
+.pill{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:13px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:8px 15px;cursor:pointer;font-weight:500}
+.pill:hover{border-color:var(--accent);color:var(--accentink)}
+.pill svg{width:15px;height:15px}
+.ready{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:13px;color:var(--muted)}
+.ready .dot{width:9px;height:9px;border-radius:99px;background:var(--green);box-shadow:0 0 0 4px hsl(150 45% 45% / .18)}
+nav hr{border:none;border-top:1px solid var(--line);margin:22px 0 0}
+
+/* hero */
+.hero{padding:46px 0 6px}
+.hero h1{font-weight:800;font-size:clamp(30px,5vw,44px);line-height:1.08;letter-spacing:-1px}
+.hero p{font-family:var(--mono);color:var(--muted);font-size:15px;max-width:640px;margin-top:16px;line-height:1.65}
+
+/* input cards */
+.card{background:var(--card);border:1px solid var(--line);border-radius:calc(var(--radius) + .5rem);padding:28px;margin-top:24px;box-shadow:0 14px 36px hsl(226 70% 4% / .10)}
+.chead{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.badge{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.5px;padding:5px 11px;border-radius:8px}
+.badge.b1{background:var(--peachsoft);color:var(--accentink)}
+.badge.b2{background:var(--card2);color:var(--muted)}
+.ctitle{font-weight:700;font-size:20px;letter-spacing:-.2px}
+.cmeta{margin-left:auto;font-family:var(--mono);font-size:12.5px;color:var(--faint)}
+.lbl{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:9px}
+
+.inrow{display:flex;gap:12px;align-items:stretch}
+.inwrap{position:relative;flex:1}
+.inwrap .gi{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--faint)}
+input[type=text],input[type=password],textarea,select{
+  width:100%;font-family:var(--mono);font-size:14px;color:var(--ink);background:var(--card2);
+  border:1px solid var(--line);border-radius:12px;padding:14px 15px}
+input.hasicon{padding-left:42px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);background:hsl(226 34% 20%);box-shadow:0 0 0 4px hsl(28 100% 56% / .18)}
+textarea{resize:vertical;line-height:1.6}
+textarea#dump{min-height:150px}
+textarea#evidence{min-height:120px;font-size:12.5px}
+select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238c8178' stroke-width='2'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:40px;max-width:320px;cursor:pointer}
+.scanbtn{font-family:var(--mono);font-weight:700;font-size:14px;letter-spacing:.3px;color:#fff;
+  background:linear-gradient(135deg,var(--peach1),var(--peach2));border:none;border-radius:12px;
+  padding:0 24px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;
+  box-shadow:0 6px 16px hsl(25 95% 55% / .30)}
+.scanbtn:hover{filter:brightness(1.05)}
+.scanbtn:disabled{opacity:.5;cursor:wait}
+.helper{font-family:var(--mono);font-size:13px;color:var(--muted);margin-top:12px;line-height:1.6}
+.helper code{background:var(--card2);border:1px solid var(--line);padding:1px 6px;border-radius:6px;font-size:12px}
+.helper a{color:var(--accentink);cursor:pointer;font-weight:600}
+.evview{font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--ink);background:var(--card2);
+  border:1px solid var(--line);border-radius:12px;padding:14px 15px;margin:0;white-space:pre-wrap;
+  max-height:360px;overflow:auto}
+.evview.empty{color:var(--faint);font-style:normal}
+
+details.disc{margin-top:14px}
+details.disc>summary{font-family:var(--mono);font-size:13px;color:var(--accentink);cursor:pointer;list-style:none;font-weight:500}
+details.disc>summary::-webkit-details-marker{display:none}
+details.disc>summary::before{content:"> ";color:var(--accent)}
+details.disc[open]>summary::before{content:"v ";color:var(--accent)}
+.twocol{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:560px){.twocol{grid-template-columns:1fr}}
+.srcalt{margin-top:16px;display:flex;gap:18px;flex-wrap:wrap}
+.srcalt a{font-family:var(--mono);font-size:13px;color:var(--accentink);cursor:pointer;font-weight:500}
+.srcalt a::before{content:"> ";color:var(--accent)}
+.altpanel{margin-top:14px;background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:16px;display:none}
+.altpanel.show{display:block}
+.note{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.6}
+
+/* primary action (inline, right after the steps) */
+.gorow{display:flex;justify-content:center;align-items:center;gap:12px;margin-top:24px}
+.gobtn{font-family:var(--mono);font-weight:700;font-size:16px;letter-spacing:1px;text-transform:uppercase;color:#fff;
+  background:linear-gradient(135deg,var(--peach1),var(--peach2));border:none;border-radius:14px;padding:16px 30px;
+  cursor:pointer;display:inline-flex;align-items:center;gap:10px;box-shadow:0 10px 26px hsl(25 95% 55% / .35)}
+.gobtn:hover{filter:brightness(1.06);transform:translateY(-1px)}
+.gobtn:disabled{opacity:.55;cursor:wait}
+.gobtn svg{width:18px;height:18px}
+@media(max-width:560px){.gorow{justify-content:stretch}.gobtn{width:100%;justify-content:center}}
+
+/* status + log */
+.status{font-family:var(--mono);font-size:13.5px;color:var(--green);min-height:20px;margin-top:14px}
+.status.err{color:var(--red)}
+#log{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:12px;display:none}
+#log div{opacity:0;animation:fade .4s forwards}
+#log .ok{color:var(--green)}
+@keyframes fade{to{opacity:1}}
+
+/* ===== RESULT VIEW (the re-entry map) ===== */
+#resultView{display:none}
+.maptop{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:40px}
+.maptop .left .ready{display:inline-flex;font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.8px;
+  color:var(--accentink);background:var(--peachsoft);border-radius:99px;padding:6px 14px;text-transform:uppercase}
+.maptop .left h2{font-weight:800;font-size:clamp(26px,4vw,38px);letter-spacing:-.6px;margin-top:14px}
+.maptop .acts{display:flex;gap:12px}
+.btnghost{font-family:var(--mono);font-weight:600;font-size:14px;color:var(--ink);background:var(--card);border:1px solid var(--line);
+  border-radius:12px;padding:12px 18px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btnghost:hover{border-color:var(--accent);color:var(--accentink)}
+.btnfill{font-family:var(--mono);font-weight:700;font-size:14px;color:#fff;background:linear-gradient(135deg,var(--peach1),var(--peach2));
+  border:none;border-radius:12px;padding:12px 18px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 6px 16px hsl(25 95% 55% / .30)}
+.btnfill:hover{filter:brightness(1.05)}
+.btnghost svg,.btnfill svg{width:15px;height:15px}
+.mapdiv{border:none;border-top:1px solid var(--line);margin:20px 0 0}
+.mapcard{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);
+  border-radius:calc(var(--radius) + .6rem);padding:40px 44px 48px;margin-top:24px;box-shadow:0 16px 40px hsl(226 70% 4% / .10)}
+.mapcard .blob{position:absolute;top:-44px;right:-44px;width:170px;height:170px;border-radius:50%;
+  background:radial-gradient(circle at 30% 70%, var(--peachsoft), hsl(30 100% 85% / .5));pointer-events:none}
+.mapcard .topline{border:none;border-top:1px solid var(--line);margin:0 0 30px}
+.sec{margin-top:30px}
+.sec:first-of-type{margin-top:0}
+.sec .slbl{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--accent)}
+.sec .inline{font-size:16px;color:var(--ink)}
+.sec .inline .slbl{margin-right:8px}
+.sec p{font-size:16px;color:var(--ink);margin-top:8px;line-height:1.7;max-width:62ch}
+.rlist{list-style:none;margin-top:12px;display:flex;flex-direction:column;gap:12px}
+.rlist li{display:flex;gap:12px;align-items:flex-start;font-size:16px}
+.rlist .dot{color:var(--faint);flex:none}
+.rlist .mk{flex:none;font-weight:700}
+.rlist .mk.done{color:var(--green)}
+.rlist .mk.not{color:var(--red)}
+.rlist .mk.unknown{color:var(--warn)}
+.conflict{position:relative;background:hsl(4 78% 52% / .06);border:1px solid hsl(4 78% 52% / .3);border-left:4px solid var(--red);
+  border-radius:0 14px 14px 0;padding:16px 18px;margin-bottom:30px}
+.conflict .ch{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--red);font-weight:700;margin-bottom:7px}
+.conflict .cl{font-size:15px;margin:3px 0}
+.conflict .cl b{color:var(--ink)}
+.conflict .res{font-size:15px;margin-top:7px;font-weight:600}
+.stopbox{background:hsl(38 78% 42% / .08);border:1px solid hsl(38 78% 42% / .35);border-left:4px solid var(--warn);border-radius:0 14px 14px 0;padding:18px 20px}
+.stopbox .q{font-weight:700;font-size:19px;color:var(--warn);margin-bottom:6px}
+.stopbox .r{font-family:var(--mono);font-size:13.5px;color:var(--muted)}
+.demonote{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:26px;line-height:1.6}
+.demonote b{color:var(--green)}
+#rawout{display:none;margin-top:20px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;white-space:pre-wrap;font-family:var(--mono);font-size:13px;line-height:1.6}
+
+footer{margin-top:44px;border-top:1px solid var(--line);padding:24px 0 10px;font-family:var(--mono);font-size:12.5px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<div class="bgart" aria-hidden="true">
+<svg viewBox="0 0 520 340" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="120" cy="130" r="48"/>
+  <path d="M100 170 q20 16 40 0"/>
+  <path d="M104 180 h32 M107 190 h26 M111 200 h18"/>
+  <path d="M115 208 l5 9 5 -9"/>
+  <path d="M106 116 l16 18 -9 11 13 15"/>
+  <path d="M120 66 v-16 M78 86 l-12 -12 M162 86 l12 -12 M64 130 h-16 M192 130 h16"/>
+  <path d="M120 218 C152 256 96 268 160 286 S332 268 392 288 S496 270 520 282"/>
+  <path d="M132 222 C172 262 232 252 312 274 S486 264 520 260"/>
+</svg>
+</div>
+<div class="wrap">
+
+<nav>
+  <div class="row">
+    <div class="logo"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l5 5-5 5"/><path d="M13 17h7"/></svg></span>Context Re-Entry</div>
+    <div class="spacer"></div>
+    <span class="pill" id="tryDemo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M19 17v4M17 19h4M13 3l2.2 5.8L21 11l-5.8 2.2L13 19l-2.2-5.8L5 11l5.8-2.2L13 3z"/></svg>Try Demo</span>
+    <span class="ready"><span class="dot"></span>Ready to help</span>
+  </div>
+  <hr>
+</nav>
+
+<!-- ============ INPUT VIEW ============ -->
+<div id="inputView">
+<header class="hero">
+  <h1>Welcome back! Let's get you in the zone.</h1>
+  <p>Scan your repo and let the code tell the story. Add a brain dump if you have one - totally optional. When your memory and the repo disagree, the repo wins.</p>
+</header>
+
+<section class="card">
+  <div class="chead"><span class="badge b1">STEP 1</span><span class="ctitle">Scan GitHub Repo</span><span class="cmeta">reads your code</span></div>
+  <label class="lbl">Repository URL</label>
+  <div class="inrow">
+    <div class="inwrap">
+      <svg class="gi" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.4-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
+      <input type="text" id="ghRepo" class="hasicon" autocomplete="off" placeholder="https://github.com/owner/repo">
+    </div>
+    <button class="scanbtn" id="ghScan"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Scan</button>
+  </div>
+  <details class="disc"><summary>Private repo / specific branch</summary>
+    <div class="twocol">
+      <div><label class="lbl">GitHub token</label><input type="password" id="ghToken" placeholder="ghp_..." autocomplete="off"></div>
+      <div><label class="lbl">Branch</label><input type="text" id="ghBranch" autocomplete="off" placeholder="main"></div>
+    </div>
+  </details>
+  <div class="srcalt">
+    <a id="toLocal">Scan a local folder instead</a>
+    <a id="toPaste">Paste a gather.py pack</a>
+  </div>
+  <div class="altpanel" id="panelLocal">
+    <button class="scanbtn" id="localScan" style="padding:13px 20px">Pick a folder &amp; scan</button>
+    <input type="file" id="localInput" webkitdirectory directory multiple style="display:none">
+    <div class="note">Works in any modern browser. Reads your most recently edited files plus recent commits from the repo's git log, entirely in your browser - nothing is uploaded. No diffs (the browser can't run git); use <code>gather.py</code> for those.</div>
+    <div class="note" id="localNote"></div>
+  </div>
+  <div class="altpanel" id="panelPaste">
+    <div class="note">The deepest source - it sees uncommitted diffs and TODOs the browser can't. Run <code>python3 gather.py /path/to/repo</code> and paste its output into the evidence box below.</div>
+  </div>
+  <div class="status" id="scanStatus" style="margin-top:14px"></div>
+</section>
+
+<section class="card">
+  <div class="chead"><span class="badge b1">STEP 2</span><span class="ctitle">Review Evidence</span><span class="cmeta" id="evStatus">waiting for a scan</span></div>
+  <div class="helper" style="margin-top:0;margin-bottom:12px">What the specialist reads as ground truth, straight from your repo. <a id="evEdit">Edit</a></div>
+  <pre class="evview empty" id="evView">Nothing yet - scan a repo in Step 1 and the evidence shows up here.</pre>
+  <textarea id="evidence" style="display:none" autocomplete="off" placeholder="# EVIDENCE PACK&#10;paste a gather.py pack here"></textarea>
+</section>
+
+<section class="card">
+  <div class="chead"><span class="badge b2">STEP 3</span><span class="ctitle">Add Brain Dump</span><span class="cmeta">optional</span></div>
+  <textarea id="dump" autocomplete="off" placeholder="I was working on the Stripe webhook handler, something about duplicate subscription events, I think I added an idempotency check but I'm not sure if I tested it, it was late..."></textarea>
+  <div class="helper">Raw memory, intentions, what felt broken - context git can't know.</div>
+  <label class="lbl" style="margin-top:20px">Project type (optional)</label>
+  <select id="ptype">
+    <option value="auto">Auto-detect</option>
+    <option value="web app">Web app</option>
+    <option value="API / backend">API / backend</option>
+    <option value="library / package">Library / package</option>
+    <option value="CLI tool">CLI tool</option>
+    <option value="data / ML">Data / ML</option>
+    <option value="mobile app">Mobile app</option>
+  </select>
+  <details class="disc" id="keybox" style="margin-top:20px"><summary>API key &amp; copy-prompt options</summary>
+    <div class="twocol" style="grid-template-columns:1fr">
+      <div class="note">Generate uses your Anthropic key, kept in this tab only (cleared when you close it), sent only to api.anthropic.com.</div>
+      <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off">
+      <div><button class="pill" id="copyBtn" style="font-weight:600">Copy prompt for any LLM</button></div>
+    </div>
+  </details>
+  <div class="status" id="status"></div>
+  <div id="log"></div>
+</section>
+
+<div class="gorow">
+  <button class="btnghost" id="clearBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>Clear</button>
+  <button class="gobtn" id="genBtn"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>Catch Me Up</button>
+</div>
+</div>
+
+<!-- ============ RESULT VIEW ============ -->
+<div id="resultView">
+  <div class="maptop">
+    <div class="left">
+      <span class="ready" id="mapReady">Re-Entry Map Ready</span>
+      <h2 id="mapTitle">project</h2>
+    </div>
+    <div class="acts">
+      <button class="btnghost" id="backBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>Back</button>
+      <button class="btnghost" id="copyMapBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy</button>
+      <button class="btnfill" id="newEntryBtn"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 1 3 6.7L3 16"/><path d="M3 21v-5h5"/></svg>New Entry</button>
+    </div>
+  </div>
+  <hr class="mapdiv">
+  <div id="mapBody"></div>
+  <div id="rawout"></div>
+</div>
+
+<footer>Context Re-Entry Specialist - you've got this &#10022;</footer>
+</div>
+
+<script src="specialist.js"></script>
+<script>
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=id=>document.getElementById(id);
+const status=$('status'),log=$('log'),sstat=$('scanStatus');
+
+/* ---- view switching ---- */
+function showResult(){$('inputView').style.display='none';$('resultView').style.display='block';window.scrollTo({top:0,behavior:'smooth'});}
+function showInput(){$('resultView').style.display='none';$('inputView').style.display='block';$('mapBody').innerHTML='';$('rawout').style.display='none';window.scrollTo({top:0,behavior:'smooth'});}
+function clearForm(){
+  ['ghRepo','ghToken','ghBranch','evidence','dump'].forEach(id=>{if($(id))$(id).value='';});
+  if($('ptype'))$('ptype').value='auto';
+  if(typeof evEditing!=='undefined'&&evEditing)exitEdit();
+  setEvCount(false);
+  sstat.className='status';sstat.textContent='';
+  status.className='status';status.textContent='';
+  $('panelLocal').classList.remove('show');$('panelPaste').classList.remove('show');
+}
+$('newEntryBtn').onclick=()=>{clearForm();showInput();};
+$('backBtn').onclick=showInput;
+$('clearBtn').onclick=clearForm;
+
+/* ---- source toggles ---- */
+function showPanel(which){
+  $('panelLocal').classList.toggle('show',which==='local');
+  $('panelPaste').classList.toggle('show',which==='paste');
+  if(which==='paste'){enterEdit();}
+}
+$('toLocal').onclick=()=>showPanel('local');
+$('toPaste').onclick=()=>showPanel('paste');
+
+/* ---- evidence: read-only view + edit toggle ---- */
+function renderEv(){
+  const v=$('evidence').value.trim();const view=$('evView');
+  if(v){view.textContent=v;view.classList.remove('empty');}
+  else{view.textContent='Nothing yet - scan a repo in Step 1 and the evidence shows up here.';view.classList.add('empty');}
+}
+function setEvCount(scroll){
+  const v=$('evidence').value.trim();const n=v?v.split('\n').length:0;const el=$('evStatus');
+  el.textContent=n?('captured - '+n+' lines'):'waiting for a scan';
+  el.style.color=n?'var(--green)':'';el.style.fontWeight=n?'700':'';
+  renderEv();
+  if(scroll&&n){const t=$('evView').style.display==='none'?$('evidence'):$('evView');t.scrollIntoView({behavior:'smooth',block:'center'});}
+}
+let evEditing=false;
+function enterEdit(){evEditing=true;$('evidence').style.display='block';$('evView').style.display='none';$('evEdit').textContent='Done';$('evidence').focus();$('evidence').scrollIntoView({behavior:'smooth',block:'center'});}
+function exitEdit(){evEditing=false;$('evidence').style.display='none';$('evView').style.display='block';$('evEdit').textContent='Edit';renderEv();}
+$('evEdit').onclick=()=>evEditing?exitEdit():enterEdit();
+$('evidence').addEventListener('input',()=>setEvCount(false));
+
+/* ---- sample ---- */
+const SAMPLE_EV=`# EVIDENCE PACK - subscription-auditor
+- Current branch: main
+- Last commit: 2026-06-10 (14 days ago)
+
+## Working tree state
+?? demo.gif
+
+## Recent commits (last 12)
+b1ea9a2  2026-06-10  minor update
+5aab3a7  2026-06-10  python not needed anymore. remove
+ecd2169  2026-06-10  remove unnecessary stuff
+a1873a3  2026-06-10  security fixes
+3b9b04b  2026-06-09  Initial commit: subscription auditor operator and Flask UI.
+
+## Most recently touched files (last 15)
+interface/index.html
+main.py
+pyproject.toml`;
+const SAMPLE_DUMP=`I think I still need to finish wiring the Flask backend - there's a main.py and app.py for the server. Also a demo gif I wanted to add. Wanted to ship to GitHub Pages.`;
+
+/* ---- recorded demo (a real run; keeps the conflict catch the Replit version missed) ---- */
+const DEMO={
+  project:"subscription-auditor",last_active:"2026-06-10",returning_after:"14 days",
+  conflict:{
+    believed:"The Flask backend (main.py / app.py) still needs wiring.",
+    evidence:"Commit 5aab3a7 \"python not needed anymore. remove\" deleted main.py and pyproject.toml; app.py is not in the tree. main.py only shows in \"recently touched\" because deleting it was the last change to it.",
+    resolution:"Repo wins - the server was removed on purpose. Do NOT rebuild it; the static site (interface/index.html) is the live artifact."},
+  where_you_were:"You were finishing a cleanup and security pass and preparing to ship to GitHub Pages. The last commits removed the Python server and tidied the repo down to a static site.",
+  open_decision:"Whether anything is left to ship. There is no backend to finish - the open question is just confirming the static site is live and committing the one loose asset.",
+  resolved:[
+    {status:"done",text:"Removed the Python backend (main.py, pyproject.toml) - intentional, commit 5aab3a7."},
+    {status:"done",text:"Security + cleanup pass committed."},
+    {status:"not",text:"demo.gif is untracked, never committed."},
+    {status:"unknown",text:"GitHub Pages deployment not confirmed live."}
+  ],
+  first_action:"Do NOT rebuild the Flask backend - you deleted it deliberately. Instead, commit or .gitignore demo.gif, then confirm GitHub Pages is serving interface/.",
+  watch_out_for:"main.py and pyproject.toml appear under \"recently touched\" only because they were deleted. If your notes say \"finish the backend,\" that memory is stale - the repo is the source of truth.",
+  stop:null
+};
+
+/* ---- render the map ---- */
+function renderMap(d,isDemo){
+  $('rawout').style.display='none';
+  $('mapTitle').textContent=d.project||'Re-Entry Map';
+  $('mapReady').textContent=isDemo?'Re-Entry Map Ready - demo':'Re-Entry Map Ready';
+  if(d.stop&&d.stop.question){
+    $('mapBody').innerHTML=`<div class="mapcard"><div class="blob"></div><hr class="topline">
+      <div class="stopbox"><div class="q">One question first (rule ${esc(d.stop.rule||'5')})</div>
+      <div style="font-size:16px;margin-top:4px">${esc(d.stop.question)}</div>
+      ${d.stop.resolution?`<div class="r" style="margin-top:8px">${esc(d.stop.resolution)}</div>`:''}</div></div>`;
+    showResult();return;
+  }
+  const sec=(label,val)=>val?`<div class="sec"><div class="slbl">${label}</div><p>${esc(val)}</p></div>`:'';
+  const inlineSec=(label,val)=>val?`<div class="sec"><div class="inline"><span class="slbl">${label}</span>${esc(val)}</div></div>`:'';
+  const mark={done:['done','&#10003;'],not:['not','&#10007;'],unknown:['unknown','?']};
+  const resolved=(d.resolved||[]).map(r=>{
+    const m=mark[r.status]||mark.unknown;
+    return `<li><span class="dot">&bull;</span><span class="mk ${m[0]}">${m[1]}</span><span>${esc(r.text)}</span></li>`;
+  }).join('');
+  const conflict=d.conflict&&d.conflict.believed?`<div class="conflict"><div class="ch">Conflict - repo wins</div>
+    <div class="cl"><b>You believed:</b> ${esc(d.conflict.believed)}</div>
+    <div class="cl"><b>The repo shows:</b> ${esc(d.conflict.evidence)}</div>
+    <div class="res">&rarr; ${esc(d.conflict.resolution)}</div></div>`:'';
+  $('mapBody').innerHTML=`<div class="mapcard"><div class="blob"></div><hr class="topline">
+    ${conflict}
+    ${inlineSec('Project:',d.project)}
+    ${inlineSec('Last active:',d.last_active)}
+    ${inlineSec('Returning after:',d.returning_after)}
+    ${sec('Where you were:',d.where_you_were)}
+    ${sec('The open decision:',d.open_decision)}
+    ${resolved?`<div class="sec"><div class="slbl">Resolved / not resolved:</div><ul class="rlist">${resolved}</ul></div>`:''}
+    ${sec('First action on return:',d.first_action)}
+    ${sec('Watch out for:',d.watch_out_for)}
+    ${isDemo?`<p class="demonote">Recorded snapshot of a real run on my subscription-auditor repo (see <b>CASE-STUDY.md</b>). Generate a live map with your own key, or Copy prompt into any LLM.</p>`:''}
+  </div>`;
+  showResult();
+}
+
+/* ---- demo ---- */
+function logSteps(steps,done){
+  log.style.display='block';log.innerHTML='';
+  steps.forEach((s,i)=>setTimeout(()=>{
+    const el=document.createElement('div');el.innerHTML=esc(s)+' <span class="ok">&#10003;</span>';log.appendChild(el);
+    if(i===steps.length-1&&done)setTimeout(done,350);
+  },i*420));
+}
+$('tryDemo').onclick=()=>{
+  if(!$('evidence').value.trim()){$('evidence').value=SAMPLE_EV;$('dump').value=SAMPLE_DUMP;}
+  status.className='status';status.textContent='';
+  logSteps(['Reading evidence pack','Tagging facts EVIDENCE vs RECALLED','Reconciling memory against the repo: CONFLICT found',
+    'Safety check: clean except 1 untracked file','Ranking the first action','Building the map'],()=>{log.style.display='none';renderMap(DEMO,true);});
+};
+
+/* ---- GitHub scan ---- */
+function parseRepo(s){
+  s=(s||'').trim().replace(/\.git$/,'');
+  let m=s.match(/github\.com[/:]([^/\s]+)\/([^/\s]+)/i);
+  if(m)return{owner:m[1],repo:m[2]};
+  m=s.match(/^([^/\s]+)\/([^/\s]+)$/);
+  if(m)return{owner:m[1],repo:m[2]};
+  return null;
+}
+async function gh(path,token){
+  const h={'Accept':'application/vnd.github+json'};
+  if(token)h['Authorization']='Bearer '+token;
+  const r=await fetch('https://api.github.com'+path,{headers:h});
+  if(!r.ok){
+    if(r.status===404)throw new Error('Repo not found (or private without a valid token).');
+    if(r.status===403)throw new Error('GitHub rate limit or access denied. Add a token, or wait a few minutes.');
+    if(r.status===401)throw new Error('Token rejected (401) - check it.');
+    throw new Error('GitHub API error '+r.status+'.');
+  }
+  return r.json();
+}
+async function scanGithub(){
+  const btn=$('ghScan');
+  try{
+    const rp=parseRepo($('ghRepo').value);
+    if(!rp)throw new Error('Enter owner/repo or a github.com URL.');
+    const token=$('ghToken').value.trim(); if(token)sessionStorage.setItem('gh_token',token);
+    const branch=$('ghBranch').value.trim();
+    btn.disabled=true;sstat.className='status';sstat.textContent='Scanning '+rp.owner+'/'+rp.repo+'...';
+    const info=await gh('/repos/'+rp.owner+'/'+rp.repo,token);
+    const ref=branch||info.default_branch;
+    const commits=await gh('/repos/'+rp.owner+'/'+rp.repo+'/commits?sha='+encodeURIComponent(ref)+'&per_page=12',token);
+    let branches=[],prs=[],files=[];
+    try{branches=await gh('/repos/'+rp.owner+'/'+rp.repo+'/branches?per_page=8',token);}catch(e){}
+    try{prs=await gh('/repos/'+rp.owner+'/'+rp.repo+'/pulls?state=open&per_page=10',token);}catch(e){}
+    try{const last=await gh('/repos/'+rp.owner+'/'+rp.repo+'/commits/'+commits[0].sha,token);files=last.files||[];}catch(e){}
+    const lastDate=(commits[0]&&commits[0].commit.author.date)||info.pushed_at||'';
+    const days=lastDate?Math.floor((Date.now()-new Date(lastDate))/86400000):'?';
+    let out='# EVIDENCE PACK - '+info.full_name+' (via GitHub API)\n- Branch: '+ref+'\n- Last commit: '+lastDate.split('T')[0]+' ('+days+' days ago)\n\n';
+    out+='## Recent commits (last '+commits.length+')\n'+commits.map(c=>c.sha.slice(0,7)+'  '+(c.commit.author.date||'').split('T')[0]+'  '+c.commit.message.split('\n')[0]).join('\n')+'\n\n';
+    if(files.length)out+='## Files changed in the last commit\n'+files.map(f=>f.status+'  '+f.filename+'  (+'+f.additions+'/-'+f.deletions+')').join('\n')+'\n\n';
+    if(branches.length)out+='## Branches ('+branches.length+')\n'+branches.map(b=>b.name).join(', ')+'\n\n';
+    if(prs.length)out+='## Open pull requests (someone may be waiting on you - rule 3a)\n'+prs.map(p=>'#'+p.number+' '+p.title+' - by '+p.user.login+((p.requested_reviewers&&p.requested_reviewers.length)?' - review requested: '+p.requested_reviewers.map(u=>u.login).join(', '):'')).join('\n')+'\n\n';
+    out+='---\nNote: the GitHub API can\'t see your uncommitted work. For that, run gather.py locally.\n';
+    $('evidence').value=out;setEvCount(true);
+    sstat.className='status';sstat.textContent='Scanned '+info.full_name+': '+commits.length+' commits, '+prs.length+' open PRs. Now hit Catch Me Up.';
+  }catch(e){sstat.className='status err';sstat.textContent=e.message;}
+  btn.disabled=false;
+}
+$('ghScan').onclick=scanGithub;
+$('ghToken').value=sessionStorage.getItem('gh_token')||'';
+
+/* ---- local folder scan (cross-browser via webkitdirectory; reads in-browser, uploads nothing) ---- */
+const SKIP=['node_modules','.venv','venv','__pycache__','dist','build','.next','.cache'];
+$('localScan').onclick=()=>$('localInput').click();
+$('localInput').onchange=async(e)=>{
+  const files=[...e.target.files];
+  if(!files.length)return;
+  sstat.className='status';sstat.textContent='Reading folder...';
+  const root=(files[0].webkitRelativePath||files[0].name).split('/')[0];
+  const recs=[]; let headFile=null, reflogFile=null;
+  for(const f of files){
+    const rel=f.webkitRelativePath||f.name;
+    const sub=rel.indexOf('/')>=0?rel.slice(rel.indexOf('/')+1):rel;   // path within the repo
+    if(sub==='.git/HEAD')headFile=f;
+    if(sub==='.git/logs/HEAD')reflogFile=f;
+    const segs=sub.split('/');
+    if(segs.includes('.git'))continue;                 // skip git internals from the file list
+    if(segs.some(s=>SKIP.includes(s)))continue;        // skip noise dirs
+    if(segs[segs.length-1].startsWith('.'))continue;   // skip dotfiles
+    recs.push([f.lastModified,sub]);
+  }
+  recs.sort((a,b)=>b[0]-a[0]);
+  const recent=recs.slice(0,15);
+  let branch=null,commits=[];
+  if(headFile){const t=await headFile.text();const m=t.match(/ref:\s*refs\/heads\/(.+)/);if(m)branch=m[1].trim();}
+  if(reflogFile){const t=await reflogFile.text();commits=t.trim().split('\n').slice(-12).reverse().map(l=>{
+    const tab=l.indexOf('\t');const meta=tab>=0?l.slice(0,tab):l;const msg=tab>=0?l.slice(tab+1):'';
+    const ts=meta.match(/\s(\d{10})\s/);const date=ts?new Date(+ts[1]*1000).toISOString().split('T')[0]:'';
+    return date+'  '+msg;});}
+  let out='# EVIDENCE PACK - '+root+' (via local folder scan)\n';
+  if(branch)out+='- Current branch: '+branch+'\n';
+  out+='- Scanned '+recs.length+' files by modified-time. Note: the browser can not run git, so no diffs/uncommitted status - run gather.py for those.\n\n';
+  out+='## Most recently edited files (last '+recent.length+')\n'+recent.map(x=>new Date(x[0]).toISOString().replace('T',' ').slice(0,16)+'  '+x[1]).join('\n')+'\n\n';
+  if(commits.length)out+='## Recent commits (from git reflog, last '+commits.length+')\n'+commits.join('\n')+'\n';
+  else out+='## Recent commits\n(.git was not included in the folder selection - use the GitHub scan or gather.py for full commit history)\n';
+  $('evidence').value=out;setEvCount(true);
+  sstat.className='status';sstat.textContent='Scanned '+root+': '+recs.length+' files'+(branch?' on '+branch:'')+'. Now hit Catch Me Up.';
+  e.target.value='';
+};
+
+/* ---- build prompt ---- */
+const FILES=["identity.md","rules.md","examples.md","reference/input-template.md","reference/reentry-doc-template.md","reference/priority-rubric.md"];
+function buildPrompt(mode){
+  const ev=$('evidence').value.trim(), dump=$('dump').value.trim(), pt=$('ptype').value;
+  if(!ev&&!dump)throw new Error('Scan a repo (or paste an evidence pack, or add a brain dump) first.');
+  const S=window.SPECIALIST||{};
+  if(!S['rules.md'])throw new Error('Specialist files did not load (specialist.js missing). Make sure specialist.js sits next to this page.');
+  let docs='';
+  for(const f of FILES){ docs+='\n\n===== FILE: '+f+' =====\n'+(S[f]||''); }
+  const base='You are the specialist defined by the files below. Follow identity.md and apply rules.md IN ORDER, citing rule numbers. Treat the EVIDENCE PACK as ground truth and the brain-dump as memory to reconcile against it (Section 1) - the repo wins on any conflict. Decide; do not ask unless rules.md Section 5 genuinely fires. Never present a guess as a remembered fact. ';
+  let ask='Produce the re-entry map exactly per reference/reentry-doc-template.md.';
+  if(mode==='json'){
+    docs+='\n\n===== FILE: reference/reentry-schema.md =====\n'+(S['reference/reentry-schema.md']||'');
+    ask='Output ONLY a single JSON object exactly per reference/reentry-schema.md. No reasoning, no prose, no markdown fences - just the JSON object, starting with { and ending with }.';
+  }
+  const ptHint=pt&&pt!=='auto'?'\nProject type hint: '+pt+'.':'';
+  return base+ask+docs+'\n\n===== EVIDENCE PACK =====\n'+(ev||'(none provided - memory-only mode, lower confidence; cannot run safety-first or reconciliation)')+'\n\n===== BRAIN-DUMP (optional) =====\n'+(dump||'(none)')+ptHint+'\n\nReconstruct the re-entry map now.';
+}
+
+/* ---- Generate Map (live) ---- */
+$('apiKey').value=sessionStorage.getItem('reentry_key')||'';
+$('genBtn').onclick=async()=>{
+  const btn=$('genBtn');
+  try{
+    const key=$('apiKey').value.trim();
+    if(!key.startsWith('sk-ant-')){$('keybox').open=true;throw new Error('Add your Anthropic key to generate live - or use Try Demo (no key) / Copy prompt for any LLM.');}
+    sessionStorage.setItem('reentry_key',key);
+    btn.disabled=true;status.className='status';status.textContent='Loading specialist files...';
+    const prompt=await buildPrompt('json');
+    const t0=Date.now();
+    const tick=setInterval(()=>{status.textContent='Reconstructing... '+Math.round((Date.now()-t0)/1000)+'s elapsed (usually 15-40s)';},1000);
+    const ctrl=new AbortController();const kill=setTimeout(()=>ctrl.abort(),120000);
+    let r;
+    try{
+      r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctrl.signal,
+        headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:3072,
+          system:'You output only the re-entry map as a single valid JSON object. Never include reasoning, explanation, or prose - only the JSON, starting with { and ending with }.',
+          messages:[{role:'user',content:prompt}]})});
+    }catch(e){
+      clearInterval(tick);clearTimeout(kill);
+      if(e.name==='AbortError')throw new Error('Timed out after 2 minutes - try again, or use Copy prompt into any LLM.');
+      throw new Error('The call to api.anthropic.com was blocked before reaching Anthropic (ad/privacy blocker, strict browser, or no internet). Fallback: Copy prompt into any LLM.');
+    }
+    clearInterval(tick);clearTimeout(kill);
+    const d=await r.json();
+    if(d.error)throw new Error(d.error.message||JSON.stringify(d.error));
+    let txt=d.content.map(b=>b.text||'').join('').replace(/\u2014/g,'-').replace(/\u2013/g,'-');
+    let raw=txt.trim();
+    raw=raw.replace(/```json/g,'').replace(/```/g,'').trim();
+    let rep=null;
+    try{rep=JSON.parse(raw);}catch(e){const m=raw.match(/\{[\s\S]*\}/);if(m){try{rep=JSON.parse(m[0]);}catch(e2){}}}
+    if(rep&&(rep.where_you_were||rep.first_action||rep.stop)){renderMap(rep,false);status.textContent='';}
+    else{showResult();$('mapBody').innerHTML='';$('rawout').textContent=raw;$('rawout').style.display='block';status.className='status err';status.textContent='The model replied with text instead of the expected format - showing it raw. Try Catch Me Up again, or use Copy prompt.';}
+    log.style.display='none';
+  }catch(e){log.style.display='none';status.className='status err';status.textContent=e.message;}
+  btn.disabled=false;
+};
+
+/* ---- copy prompt for any LLM ---- */
+$('copyBtn').onclick=async()=>{
+  try{const p=await buildPrompt();await navigator.clipboard.writeText(p);
+    status.className='status';status.textContent='Prompt copied ('+p.length.toLocaleString()+' chars) - paste into any LLM.';
+  }catch(e){status.className='status err';status.textContent=e.message;}
+};
+
+/* ---- copy the generated map as text ---- */
+$('copyMapBtn').onclick=async()=>{
+  const t=$('mapBody').innerText||$('rawout').innerText||'';
+  try{await navigator.clipboard.writeText(t.trim());
+    const b=$('copyMapBtn');const old=b.innerHTML;b.textContent='Copied';setTimeout(()=>b.innerHTML=old,1400);
+  }catch(e){}
+};
+
+/* ---- always start fresh: clear browser-restored form values on every load ---- */
+window.addEventListener('pageshow',()=>{
+  ['ghRepo','ghBranch','dump','evidence'].forEach(id=>{if($(id))$(id).value='';});
+  if($('ptype'))$('ptype').value='auto';
+  setEvCount(false);
+});
+</script>
+</body>
+</html>
