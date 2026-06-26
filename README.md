@@ -14,6 +14,8 @@ I built this for myself. I run three client projects plus a side build, and ever
 I switch I lose 30 to 45 minutes just remembering where I was and why. This is the tool
 I wished I had.
 
+![Context Re-Entry: scan a stale repo, catch a false memory, get the first action](demo.gif)
+
 ## 🧪 For reviewers - test it in 60 seconds
 
 Zero install, no key: open the [live demo](https://ms-codehorizon.github.io/context-reentry/)

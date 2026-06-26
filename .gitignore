@@ -1,4 +1,4 @@
-# Secrets — NEVER commit
+# Secrets - NEVER commit
 .env
 *.env
 
@@ -10,3 +10,6 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# scratch frame exports (used to preview demo.gif)
+_f*.png
